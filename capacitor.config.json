@@ -1,0 +1,6 @@
+{
+  "appId": "com.khsaadany.medtracker",
+  "appName": "متابعة الدواء",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

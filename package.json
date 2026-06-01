@@ -1,0 +1,19 @@
+{
+  "name": "medication-tracker",
+  "version": "1.0.0",
+  "description": "Native Android Medication Tracker with local alarms",
+  "main": "index.js",
+  "scripts": {
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  },
+  "author": "Khaled El_Saadany",
+  "license": "ISC"
+}
