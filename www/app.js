@@ -1091,103 +1091,41 @@ class MedicationTracker {
   }
 
   // --- CAMERA AND OCR SCANNING LOGIC ---
-  startCameraScanner() {
-    const video = document.getElementById('scanner-video');
-    const view = document.getElementById('camera-scanner-view');
-    const triggerRow = document.getElementById('ocr-trigger-ui');
-    const fileUI = document.getElementById('ocr-file-ui');
-
-    // Request high-definition resolution (1080p or 720p) for better OCR accuracy
-    navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: 'environment',
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      } 
-    })
-      .then(stream => {
-        this.scannerStream = stream;
-        video.srcObject = stream;
-        view.classList.remove('hidden');
-        triggerRow.classList.add('hidden');
-        fileUI.classList.add('hidden');
-      })
-      .catch(err => {
-        console.warn('Camera blocked or high-res not supported, falling back to default constraints.', err);
-        // Fallback to default webcam if high-res fails
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-          .then(stream => {
-            this.scannerStream = stream;
-            video.srcObject = stream;
-            view.classList.remove('hidden');
-            triggerRow.classList.add('hidden');
-            fileUI.classList.add('hidden');
-          })
-          .catch(e => {
-            console.warn('Camera blocked completely.', e);
-            alert('يتعذر فتح الكاميرا التلقائية، يمكنك رفع صورة علبة الدواء من الاستوديو.');
-            fileUI.classList.remove('hidden');
-          });
-      });
+  async startCameraScanner() {
+    const { Camera } = window.Capacitor ? window.Capacitor.Plugins : {};
+    
+    if (Camera) {
+      try {
+        const image = await Camera.getPhoto({
+          quality: 90,
+          allowEditing: false,
+          resultType: 'dataUrl',
+          source: 'CAMERA' // Open the device's native camera immediately
+        });
+        
+        if (image && image.dataUrl) {
+          this.setCapturedPhoto(image.dataUrl);
+          this.extractTextFromImage(image.dataUrl);
+        }
+      } catch (err) {
+        console.warn('Native camera capture cancelled or failed:', err);
+      }
+    } else {
+      // Fallback for standard browsers or web view preview without Capacitor Camera support
+      alert('الكاميرا الأصيلة غير متوفرة في هذه البيئة. يرجى اختيار ملف صورة من المعرض.');
+      const fileUI = document.getElementById('ocr-file-ui');
+      if (fileUI) {
+        fileUI.classList.remove('hidden');
+      }
+    }
   }
 
   stopCameraScanner() {
-    if (this.scannerStream) {
-      this.scannerStream.getTracks().forEach(track => track.stop());
-      this.scannerStream = null;
-    }
-    document.getElementById('camera-scanner-view').classList.add('hidden');
-    document.getElementById('ocr-trigger-ui').classList.remove('hidden');
-    document.getElementById('ocr-file-ui').classList.add('hidden');
+    // Native camera manages its own state, so no manual streaming cleanup is needed.
   }
 
   captureScannerImage() {
-    const video = document.getElementById('scanner-video');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // 1. Save the clean color image for visual user reference in the database
-    const colorDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    
-    // 2. Perform Grayscale and Contrast Preprocessing on the canvas for OCR optimization
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imgData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i+1];
-      const b = data[i+2];
-      
-      // Grayscale conversion using standard luminance weights
-      let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      
-      // Contrast Enhancement & Sigmoid-like thresholding
-      let factor = 1.8;
-      let val = factor * (gray - 128) + 128;
-      val = Math.max(0, Math.min(255, val)); // Clamp to 0-255
-      
-      // Dynamic local binarization threshold
-      let finalVal = val > 120 ? 255 : 0;
-      
-      data[i] = finalVal;
-      data[i+1] = finalVal;
-      data[i+2] = finalVal;
-    }
-    ctx.putImageData(imgData, 0, 0);
-    
-    // 3. Generate a high-contrast binary data URL to send to the OCR engine
-    const ocrDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    
-    this.stopCameraScanner();
-    // Save the original color image in the UI/database
-    this.setCapturedPhoto(colorDataUrl);
-    
-    // Trigger OCR Process with the optimized black-and-white high-contrast image
-    this.extractTextFromImage(ocrDataUrl);
+    // Obsolete for native camera
   }
 
   handleImageUpload(e) {

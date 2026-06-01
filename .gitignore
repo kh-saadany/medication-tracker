@@ -5,3 +5,9 @@ android/app/build/
 android/.gradle/
 android/local.properties
 *.log
+
+# Ignore generated android icons and splash screens to keep repo size small
+android/app/src/main/res/mipmap-*/ic_launcher*
+android/app/src/main/res/drawable-*/splash*
+android/app/src/main/res/drawable-night/splash.png
+android/app/src/main/res/drawable/splash.png

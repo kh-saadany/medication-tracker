@@ -284,19 +284,7 @@
               <button type="button" class="btn btn-secondary btn-sm" onclick="app.startCameraScanner()">فتح الكاميرا</button>
             </div>
 
-            <!-- OCR Camera Overlay Scanner -->
-            <div class="camera-scanner-container hidden" id="camera-scanner-view">
-              <video id="scanner-video" autoplay playsinline></video>
-              <div class="scanner-frame">
-                <div class="scan-laser"></div>
-              </div>
-              <div class="scanner-controls">
-                <button type="button" class="btn btn-success btn-sm" onclick="app.captureScannerImage()">التقاط الصورة 📸</button>
-                <button type="button" class="btn btn-outline btn-sm btn-danger" onclick="app.stopCameraScanner()">إلغاء</button>
-              </div>
-            </div>
-            
-            <!-- File input fallback -->
+
             <div class="ocr-file-upload hidden" id="ocr-file-ui">
               <label for="ocr-image-file" class="btn btn-outline btn-sm w-full text-center">أو اختر صورة من المعرض 🖼️</label>
               <input type="file" id="ocr-image-file" accept="image/*" onchange="app.handleImageUpload(event)" style="display: none;">
