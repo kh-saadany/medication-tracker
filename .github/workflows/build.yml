@@ -45,21 +45,21 @@ jobs:
         run: |
           npx cap sync android
 
-      - name: Build APK (Debug)
+      - name: Build APK (Release)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
-      - name: Rename APK to reflect app name and version
+      - name: Rename APK to reflect version
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
+          mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/MedicationTracker-v1.0.0.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MedicationTracker-v1.0.0-build-${{ github.run_number }}
-          path: android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
+          name: MedicationTracker-v1.0.0
+          path: android/app/build/outputs/apk/release/MedicationTracker-v1.0.0.apk
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
@@ -69,6 +69,6 @@ jobs:
           body: "يمكنك تحميل ملف الـ APK وتثبيته مباشرة على هاتفك لتجربة تطبيق متابعة الأدوية الأصيل مع التنبيهات الموثوقة."
           draft: false
           prerelease: false
-          files: android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
+          files: android/app/build/outputs/apk/release/MedicationTracker-v1.0.0.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
