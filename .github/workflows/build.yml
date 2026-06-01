@@ -51,11 +51,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Rename APK to reflect app name and version
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: MedicationTracker-v1.0.0-build-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
@@ -65,6 +69,6 @@ jobs:
           body: "يمكنك تحميل ملف الـ APK وتثبيته مباشرة على هاتفك لتجربة تطبيق متابعة الأدوية الأصيل مع التنبيهات الموثوقة."
           draft: false
           prerelease: false
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/MedicationTracker-v1.0.0-build-${{ github.run_number }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
