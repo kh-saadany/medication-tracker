@@ -21,6 +21,14 @@ class MedicationTracker {
     this.lastScannedBarcode = '';
     this.currentSavingMedId = null;
 
+    // Custom Cropper states
+    this.cropperImgData = null;
+    this.cropBoxState = { left: 0, top: 0, width: 0, height: 0, displayWidth: 0, displayHeight: 0 };
+    this.activeCropperHandle = null;
+    this.isDraggingCropperBox = false;
+    this.cropperDragStart = { x: 0, y: 0 };
+    this.cropperBoxStart = { left: 0, top: 0, width: 0, height: 0 };
+
     // Initialize App
     this.init();
   }
@@ -1445,6 +1453,130 @@ class MedicationTracker {
 
     const stockInput = document.getElementById('med-stock');
     stockInput.addEventListener('input', () => this.toggleStockAlertUI());
+
+    // Custom Cropper Drag & Resize Events
+    const cropperBox = document.getElementById('cropper-box');
+    
+    const onPointerDown = (e) => {
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      
+      if (!clientX || !clientY) return;
+      
+      if (e.target.classList.contains('crop-handle')) {
+        // Resizing
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target.classList.contains('handle-tl')) this.activeCropperHandle = 'tl';
+        else if (e.target.classList.contains('handle-tr')) this.activeCropperHandle = 'tr';
+        else if (e.target.classList.contains('handle-bl')) this.activeCropperHandle = 'bl';
+        else if (e.target.classList.contains('handle-br')) this.activeCropperHandle = 'br';
+      } else if (e.target === cropperBox) {
+        // Dragging Box
+        e.preventDefault();
+        e.stopPropagation();
+        this.isDraggingCropperBox = true;
+      } else {
+        return;
+      }
+      
+      this.cropperDragStart = { x: clientX, y: clientY };
+      this.cropperBoxStart = {
+        left: this.cropBoxState.left,
+        top: this.cropBoxState.top,
+        width: this.cropBoxState.width,
+        height: this.cropBoxState.height
+      };
+    };
+
+    cropperBox.addEventListener('mousedown', onPointerDown);
+    cropperBox.addEventListener('touchstart', onPointerDown, { passive: false });
+    
+    // Listen on window for moving to keep drag smooth
+    const onPointerMove = (e) => {
+      if (!this.activeCropperHandle && !this.isDraggingCropperBox) return;
+      
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      
+      if (!clientX || !clientY) return;
+      
+      e.preventDefault();
+      
+      const deltaX = clientX - this.cropperDragStart.x;
+      const deltaY = clientY - this.cropperDragStart.y;
+      
+      const displayW = this.cropBoxState.displayWidth;
+      const displayH = this.cropBoxState.displayHeight;
+      const minDim = 40; // minimum width and height for crop box
+      
+      if (this.isDraggingCropperBox) {
+        // Move the box
+        let newLeft = this.cropperBoxStart.left + deltaX;
+        let newTop = this.cropperBoxStart.top + deltaY;
+        
+        newLeft = Math.max(0, Math.min(newLeft, displayW - this.cropperBoxStart.width));
+        newTop = Math.max(0, Math.min(newTop, displayH - this.cropperBoxStart.height));
+        
+        this.cropBoxState.left = newLeft;
+        this.cropBoxState.top = newTop;
+      } else if (this.activeCropperHandle) {
+        // Resize box
+        const startL = this.cropperBoxStart.left;
+        const startT = this.cropperBoxStart.top;
+        const startW = this.cropperBoxStart.width;
+        const startH = this.cropperBoxStart.height;
+        const right = startL + startW;
+        const bottom = startT + startH;
+        
+        // Convert client coordinates to container relative coordinates
+        const containerRect = document.getElementById('cropper-container').getBoundingClientRect();
+        const currentX = clientX - containerRect.left;
+        const currentY = clientY - containerRect.top;
+        
+        if (this.activeCropperHandle === 'tl') {
+          const newLeft = Math.max(0, Math.min(currentX, right - minDim));
+          const newTop = Math.max(0, Math.min(currentY, bottom - minDim));
+          this.cropBoxState.left = newLeft;
+          this.cropBoxState.width = right - newLeft;
+          this.cropBoxState.top = newTop;
+          this.cropBoxState.height = bottom - newTop;
+        } else if (this.activeCropperHandle === 'tr') {
+          const newWidth = Math.max(minDim, Math.min(currentX - startL, displayW - startL));
+          const newTop = Math.max(0, Math.min(currentY, bottom - minDim));
+          this.cropBoxState.width = newWidth;
+          this.cropBoxState.top = newTop;
+          this.cropBoxState.height = bottom - newTop;
+        } else if (this.activeCropperHandle === 'bl') {
+          const newLeft = Math.max(0, Math.min(currentX, right - minDim));
+          const newHeight = Math.max(minDim, Math.min(currentY - startT, displayH - startT));
+          this.cropBoxState.left = newLeft;
+          this.cropBoxState.width = right - newLeft;
+          this.cropBoxState.height = newHeight;
+        } else if (this.activeCropperHandle === 'br') {
+          const newWidth = Math.max(minDim, Math.min(currentX - startL, displayW - startL));
+          const newHeight = Math.max(minDim, Math.min(currentY - startT, displayH - startT));
+          this.cropBoxState.width = newWidth;
+          this.cropBoxState.height = newHeight;
+        }
+      }
+      
+      // Update DOM
+      cropperBox.style.left = `${this.cropBoxState.left}px`;
+      cropperBox.style.top = `${this.cropBoxState.top}px`;
+      cropperBox.style.width = `${this.cropBoxState.width}px`;
+      cropperBox.style.height = `${this.cropBoxState.height}px`;
+    };
+    
+    const onPointerUp = () => {
+      this.activeCropperHandle = null;
+      this.isDraggingCropperBox = false;
+    };
+    
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchend', onPointerUp);
   }
 
   async calculateCustomAdherence() {
@@ -1807,16 +1939,40 @@ class MedicationTracker {
 
     const controllers = [];
     const fetchWithTimeout = async (url, options = {}) => {
-      const controller = new AbortController();
-      controllers.push(controller);
-      const id = setTimeout(() => controller.abort(), 8000);
-      try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        clearTimeout(id);
-        return response;
-      } catch (e) {
-        clearTimeout(id);
-        throw e;
+      const { CapacitorHttp } = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
+      if (CapacitorHttp) {
+        try {
+          const httpOptions = {
+            url: url,
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            connectTimeout: 8000,
+            readTimeout: 8000
+          };
+          const response = await CapacitorHttp.request(httpOptions);
+          let text = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+          return {
+            ok: response.status >= 200 && response.status < 300,
+            status: response.status,
+            text: async () => text,
+            json: async () => typeof response.data === 'object' ? response.data : JSON.parse(response.data)
+          };
+        } catch (e) {
+          console.error('CapacitorHttp error:', e);
+          throw e;
+        }
+      } else {
+        const controller = new AbortController();
+        controllers.push(controller);
+        const id = setTimeout(() => controller.abort(), 8000);
+        try {
+          const response = await fetch(url, { ...options, signal: controller.signal });
+          clearTimeout(id);
+          return response;
+        } catch (e) {
+          clearTimeout(id);
+          throw e;
+        }
       }
     };
 
@@ -1949,21 +2105,23 @@ class MedicationTracker {
     if (Camera) {
       try {
         const image = await Camera.getPhoto({
-          quality: 75,
-          allowEditing: true, // Native System crop tool active!
+          quality: 85,
+          allowEditing: false, // Prevent native OS crop prompts!
           resultType: 'dataUrl',
           source: 'CAMERA'
         });
         
         if (image && image.dataUrl) {
-          const med = await this.dbQuery('medications', 'get', null, this.currentSavingMedId);
-          if (med) {
-            med.image = image.dataUrl;
-            await this.dbQuery('medications', 'put', med);
-          }
+          this.showCropper(image.dataUrl);
+        } else {
+          // Re-show options dialog if cancelled or failed
+          photoDialog.classList.remove('hidden');
+          photoDialog.classList.add('active');
         }
       } catch (err) {
         console.warn('Native photo capture failure:', err);
+        photoDialog.classList.remove('hidden');
+        photoDialog.classList.add('active');
       }
     } else {
       // Web browser file selection fallback
@@ -1973,24 +2131,20 @@ class MedicationTracker {
       fileInput.accept = 'image/*';
       fileInput.onchange = (e) => {
         const file = e.target.files[0];
-        if (!file) return;
+        if (!file) {
+          photoDialog.classList.remove('hidden');
+          photoDialog.classList.add('active');
+          return;
+        }
         const reader = new FileReader();
-        reader.onload = async (event) => {
+        reader.onload = (event) => {
           const dataUrl = event.target.result;
-          const med = await this.dbQuery('medications', 'get', null, this.currentSavingMedId);
-          if (med) {
-            med.image = dataUrl;
-            await this.dbQuery('medications', 'put', med);
-            this.loadAndRenderAll();
-          }
+          this.showCropper(dataUrl);
         };
         reader.readAsDataURL(file);
       };
       fileInput.click();
     }
-    
-    this.currentSavingMedId = null;
-    this.loadAndRenderAll();
   }
 
   skipPhotoReference() {
@@ -1999,6 +2153,125 @@ class MedicationTracker {
     photoDialog.classList.remove('active');
     this.currentSavingMedId = null;
     this.loadAndRenderAll();
+  }
+
+  showCropper(dataUrl) {
+    this.cropperImgData = dataUrl;
+    const overlay = document.getElementById('image-cropper-overlay');
+    const sourceImg = document.getElementById('cropper-source-img');
+    const cropperBox = document.getElementById('cropper-box');
+    const container = document.getElementById('cropper-container');
+    
+    overlay.classList.remove('hidden');
+    overlay.classList.add('active');
+    
+    sourceImg.src = dataUrl;
+    sourceImg.onload = () => {
+      // Calculate layout sizes based on screen constraints
+      const maxWidth = window.innerWidth * 0.9;
+      const maxHeight = window.innerHeight * 0.5;
+      
+      const naturalW = sourceImg.naturalWidth;
+      const naturalH = sourceImg.naturalHeight;
+      
+      const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH);
+      const displayW = naturalW * scale;
+      const displayH = naturalH * scale;
+      
+      container.style.width = `${displayW}px`;
+      container.style.height = `${displayH}px`;
+      
+      // Initialize crop box to be centered and 75% of the image size
+      const boxW = displayW * 0.75;
+      const boxH = displayH * 0.75;
+      const boxL = (displayW - boxW) / 2;
+      const boxT = (displayH - boxH) / 2;
+      
+      this.cropBoxState = {
+        left: boxL,
+        top: boxT,
+        width: boxW,
+        height: boxH,
+        displayWidth: displayW,
+        displayHeight: displayH
+      };
+      
+      cropperBox.style.left = `${boxL}px`;
+      cropperBox.style.top = `${boxT}px`;
+      cropperBox.style.width = `${boxW}px`;
+      cropperBox.style.height = `${boxH}px`;
+    };
+  }
+
+  async confirmCropAndSave() {
+    const overlay = document.getElementById('image-cropper-overlay');
+    const sourceImg = document.getElementById('cropper-source-img');
+    
+    if (!this.cropperImgData) return;
+    
+    const naturalW = sourceImg.naturalWidth;
+    const naturalH = sourceImg.naturalHeight;
+    const displayW = this.cropBoxState.displayWidth;
+    const displayH = this.cropBoxState.displayHeight;
+    
+    const scaleX = naturalW / displayW;
+    const scaleY = naturalH / displayH;
+    
+    const cropX = this.cropBoxState.left * scaleX;
+    const cropY = this.cropBoxState.top * scaleY;
+    const cropW = this.cropBoxState.width * scaleX;
+    const cropH = this.cropBoxState.height * scaleY;
+    
+    // Create temporary canvas
+    const canvas = document.createElement('canvas');
+    
+    // Limit output to maximum 600px for best performance and IndexedDB space saving
+    const maxOutputDim = 600;
+    let destW = cropW;
+    let destH = cropH;
+    if (cropW > maxOutputDim || cropH > maxOutputDim) {
+      if (cropW > cropH) {
+        destW = maxOutputDim;
+        destH = (cropH / cropW) * maxOutputDim;
+      } else {
+        destH = maxOutputDim;
+        destW = (cropW / cropH) * maxOutputDim;
+      }
+    }
+    
+    canvas.width = destW;
+    canvas.height = destH;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(sourceImg, cropX, cropY, cropW, cropH, 0, 0, destW, destH);
+    
+    const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Save to Database
+    const med = await this.dbQuery('medications', 'get', null, this.currentSavingMedId);
+    if (med) {
+      med.image = croppedDataUrl;
+      await this.dbQuery('medications', 'put', med);
+    }
+    
+    // Clean up
+    overlay.classList.add('hidden');
+    overlay.classList.remove('active');
+    this.currentSavingMedId = null;
+    this.cropperImgData = null;
+    this.loadAndRenderAll();
+  }
+
+  cancelCropAndRetry() {
+    const overlay = document.getElementById('image-cropper-overlay');
+    overlay.classList.add('hidden');
+    overlay.classList.remove('active');
+    this.cropperImgData = null;
+    
+    // Re-show options dialog so user can capture again or skip
+    const photoDialog = document.getElementById('photo-option-dialog');
+    photoDialog.classList.remove('hidden');
+    photoDialog.classList.add('active');
   }
 
   // --- PRN LOG DOSE LOGIC ---

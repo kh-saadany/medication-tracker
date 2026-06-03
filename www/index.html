@@ -557,6 +557,33 @@
       </div>
     </div>
   </div>
+  <!-- Custom Image Cropper Overlay (Manual In-App Cropper) -->
+  <div id="image-cropper-overlay" class="modal-overlay hidden" style="z-index: 2500; background: rgba(0,0,0,0.9);">
+    <div class="cropper-wrapper">
+      <div class="cropper-header text-center mb-4">
+        <h4 class="text-lg font-bold text-white">تحديد وقص صورة الدواء</h4>
+        <p class="text-xs text-muted" style="color: #a0aec0;">اسحب المقابض أو حرك المربع لتحديد شكل العلبة</p>
+      </div>
+      
+      <!-- Cropper Viewport Container -->
+      <div id="cropper-container" style="position: relative; margin: 0 auto; overflow: hidden; background: #000; border-radius: 8px;">
+        <img id="cropper-source-img" src="" alt="Source Image" style="display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none;">
+        <div id="cropper-box" style="position: absolute; border: 2px dashed #4ade80; box-sizing: border-box; cursor: move; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);">
+          <!-- Draggable Corner Handles -->
+          <div class="crop-handle handle-tl"></div>
+          <div class="crop-handle handle-tr"></div>
+          <div class="crop-handle handle-bl"></div>
+          <div class="crop-handle handle-br"></div>
+        </div>
+      </div>
+      
+      <!-- Action Buttons -->
+      <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 380px; margin: 20px auto 0;">
+        <button type="button" class="btn btn-success w-full btn-lg" onclick="app.confirmCropAndSave()">تأكيد القص وحفظ الصورة ✅</button>
+        <button type="button" class="btn btn-outline btn-light w-full btn-lg" style="color: #fff; border-color: rgba(255,255,255,0.4);" onclick="app.cancelCropAndRetry()">إلغاء وإعادة المحاولة 🔄</button>
+      </div>
+    </div>
+  </div>
 
   <!-- JavaScript file -->
   <script src="app.js"></script>
