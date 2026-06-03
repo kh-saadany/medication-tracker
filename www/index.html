@@ -233,6 +233,15 @@
             </div>
             <p class="text-xs text-muted mt-2">يحتاج التطبيق لصلاحية الإشعارات من نظام التشغيل ليتمكن من تذكيرك بمواعيد الأدوية.</p>
           </div>
+
+          <div class="card permission-card mt-6">
+            <h4>🔐 قفل التطبيق والأمان (PIN Lock)</h4>
+            <div class="permission-status-row">
+              <span id="pin-status-badge" class="badge badge-danger">غير نشط</span>
+              <button id="btn-toggle-pin" class="btn btn-outline btn-sm" onclick="app.togglePinSetup()">تفعيل قفل الـ PIN</button>
+            </div>
+            <p class="text-xs text-muted mt-2">قم بتفعيل رمز مرور (PIN) من 4 أرقام لتأمين وسرية بيانات أدويتك وتنبيهاتك الطبية محلياً.</p>
+          </div>
         </div>
       </section>
 
@@ -260,7 +269,7 @@
 
   </div>
 
-  <!-- Add/Edit Medication Modal -->
+  <!-- Add/Edit Medication Modal (Refactored to 3-Step Wizard for Accessibility) -->
   <div id="medication-modal" class="modal-overlay">
     <div class="modal-container">
       <div class="modal-header">
@@ -270,114 +279,187 @@
         </button>
       </div>
 
+      <!-- Wizard Step Indicator -->
+      <div class="wizard-indicator-container">
+        <div class="wizard-step-badge active" id="badge-step-1">1. الأساسيات</div>
+        <div class="wizard-step-line" id="line-step-1"></div>
+        <div class="wizard-step-badge" id="badge-step-2">2. الجدولة</div>
+        <div class="wizard-step-line" id="line-step-2"></div>
+        <div class="wizard-step-badge" id="badge-step-3">3. التنبيهات</div>
+      </div>
+
       <div class="modal-body">
         <form id="medication-form" onsubmit="app.saveMedication(event)">
           <input type="hidden" id="med-id">
 
-          <!-- OCR / Scanning Camera Option -->
-          <div class="ocr-section-card">
-            <div class="ocr-trigger-row" id="ocr-trigger-ui">
-              <div class="ocr-text-col">
-                <h5>📷 تعبئة سريعة عبر التصوير</h5>
-                <p>صور علبة الدواء وسنقوم باستخراج الاسم تلقائياً.</p>
+          <!-- WIZARD STEP 1: Basic Details -->
+          <div class="wizard-step-panel" id="wizard-step-1">
+            <!-- Barcode Scanning Trigger Row -->
+            <div class="ocr-section-card">
+              <div class="ocr-trigger-row" id="ocr-trigger-ui">
+                <div class="ocr-text-col">
+                  <h5>📷 مسح الباركود السريع</h5>
+                  <p>امسح باركود علبة الدواء لملء البيانات تلقائياً.</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-lg" style="height: 54px; min-width: 120px;" onclick="app.startBarcodeScanner()">مسح الباركود</button>
               </div>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="app.startCameraScanner()">فتح الكاميرا</button>
-            </div>
-
-
-            <div class="ocr-file-upload hidden" id="ocr-file-ui">
-              <label for="ocr-image-file" class="btn btn-outline btn-sm w-full text-center">أو اختر صورة من المعرض 🖼️</label>
-              <input type="file" id="ocr-image-file" accept="image/*" onchange="app.handleImageUpload(event)" style="display: none;">
-            </div>
-
-            <!-- OCR Loading state -->
-            <div class="ocr-loading-overlay hidden" id="ocr-loading-view">
-              <div class="spinner"></div>
-              <p>جاري استخراج اسم الدواء والبيانات...</p>
-            </div>
-            
-            <!-- Visual confirmation of captured photo -->
-            <div class="captured-preview-container hidden" id="captured-preview-view">
-              <img id="captured-preview-img" src="" alt="صورة العلبة">
-              <div class="preview-info">
-                <span>تم التقاط صورة العلبة كمرجع بصري 🖼️</span>
-                <button type="button" class="btn-remove-photo" onclick="app.removeCapturedPhoto()">حذف الصورة</button>
+              
+              <!-- Visual confirmation of captured photo (Optional fallback indicator) -->
+              <div class="captured-preview-container hidden" id="captured-preview-view">
+                <img id="captured-preview-img" src="" alt="صورة العلبة">
+                <div class="preview-info">
+                  <span>تم التقاط صورة العلبة كمرجع بصري 🖼️</span>
+                  <button type="button" class="btn-remove-photo" onclick="app.removeCapturedPhoto()">حذف الصورة</button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Medicine Details Form -->
-          <div class="form-group mt-4">
-            <label for="med-name">اسم الدواء *</label>
-            <input type="text" id="med-name" required placeholder="مثال: بنادول، أوميبرازول...">
-          </div>
+            <!-- Medicine Details -->
+            <div class="form-group mt-4">
+              <label for="med-name">اسم الدواء *</label>
+              <input type="text" id="med-name" required placeholder="مثال: بنادول، أوكتاترون..." class="form-control-lg">
+            </div>
 
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="med-dosage">الجرعة *</label>
-              <input type="text" id="med-dosage" required placeholder="مثال: حبة واحدة، 5 مل...">
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="med-dosage">الجرعة القياسية *</label>
+                <input type="text" id="med-dosage" required placeholder="مثال: حبة واحدة، 5 مل..." class="form-control-lg">
+              </div>
+              <div class="form-group flex-1">
+                <label for="med-type">الشكل الدوائي</label>
+                <select id="med-type" class="form-control-lg">
+                  <option value="tablet">💊 أقراص/كبسولات</option>
+                  <option value="syrup">🧪 شراب/سائل</option>
+                  <option value="injection">💉 حقن</option>
+                  <option value="cream">🧴 مرهم/كريم</option>
+                  <option value="drops">💧 قطرة</option>
+                  <option value="other">📦 أخرى</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group flex-1">
-              <label for="med-type">الشكل الدوائي</label>
-              <select id="med-type">
-                <option value="tablet">💊 أقراص/كبسولات</option>
-                <option value="syrup">🧪 شراب/سائل</option>
-                <option value="injection">💉 حقن</option>
-                <option value="cream">🧴 مرهم/كريم</option>
-                <option value="drops">💧 قطرة</option>
-                <option value="other">📦 أخرى</option>
-              </select>
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label for="med-frequency">عدد المرات يومياً</label>
-              <select id="med-frequency" onchange="app.generateTimeInputs()">
-                <option value="1">مرة واحدة في اليوم</option>
-                <option value="2">مرتين في اليوم</option>
-                <option value="3">3 مرات في اليوم</option>
-                <option value="4">4 مرات في اليوم</option>
-                <option value="0">عند اللزوم فقط</option>
-              </select>
-            </div>
-            <div class="form-group flex-1">
-              <label for="med-snooze">تكرار التنبيه (Snooze)</label>
-              <select id="med-snooze">
-                <option value="5">كل 5 دقائق</option>
-                <option value="10">كل 10 دقائق</option>
-                <option value="15">كل 15 دقيقة</option>
-                <option value="0">بدون تكرار</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Dynamic Time Inputs -->
-          <div class="form-group" id="time-inputs-container">
-            <label>أوقات تناول الدواء</label>
-            <div class="time-inputs-grid" id="time-inputs-grid">
-              <div class="time-input-item">
-                <span>الجرعة 1:</span>
-                <input type="time" class="med-time-input" required value="08:00">
+            <!-- Inventory Management -->
+            <div class="form-row card-dark mt-4">
+              <div class="form-group flex-1">
+                <label for="med-stock">المخزون الحالي (حبة/عبوة)</label>
+                <input type="number" id="med-stock" min="0" placeholder="مثال: 30" class="form-control-lg" onchange="app.toggleStockAlertUI()">
+              </div>
+              <div class="form-group flex-1" id="stock-alert-wrapper">
+                <label for="med-stock-alert">نبهني بالشراء عند وصول المخزون لـ</label>
+                <input type="number" id="med-stock-alert" min="0" placeholder="مثال: 5" class="form-control-lg">
               </div>
             </div>
           </div>
 
-          <!-- Inventory Management -->
-          <div class="form-row card-dark mt-2">
-            <div class="form-group flex-1">
-              <label for="med-stock">المخزون الحالي (عدد الحبوب/العبوات)</label>
-              <input type="number" id="med-stock" min="0" placeholder="مثال: 30" onchange="app.toggleStockAlertUI()">
+          <!-- WIZARD STEP 2: Scheduling -->
+          <div class="wizard-step-panel hidden" id="wizard-step-2">
+            <!-- Scheduling Configuration Row -->
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="med-frequency">تكرار المواعيد</label>
+                <select id="med-frequency" class="form-control-lg" onchange="app.generateTimeInputs()">
+                  <option value="1">مرة واحدة في اليوم</option>
+                  <option value="2">مرتين في اليوم</option>
+                  <option value="3">3 مرات في اليوم</option>
+                  <option value="4">4 مرات في اليوم</option>
+                  <option value="interval">كل عدد ساعات معين ⏱️</option>
+                  <option value="0">عند اللزوم فقط (PRN) ⚠️</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group flex-1" id="stock-alert-wrapper">
-              <label for="med-stock-alert">نبهني بالشراء عند وصول المخزون لـ</label>
-              <input type="number" id="med-stock-alert" min="0" placeholder="مثال: 5">
+
+            <!-- Complex Intervals Options (Visible when interval selected) -->
+            <div id="interval-hours-wrapper" class="form-group hidden card-dark p-3">
+              <label for="med-interval-hours">كرر التنبيه كل (ساعات) *</label>
+              <input type="number" id="med-interval-hours" min="1" max="24" placeholder="مثال: 3 ساعات" class="form-control-lg">
+              <p class="text-xs text-muted mt-1">سيقوم التطبيق بجدولة مواعيد متكررة تلقائياً على مدار اليوم.</p>
+            </div>
+
+            <!-- PRN ( عند اللزوم ) Options -->
+            <div id="prn-options-wrapper" class="form-group hidden card-dark p-3">
+              <div class="checkbox-row mb-2">
+                <input type="checkbox" id="med-prn-limit-toggle" onchange="app.togglePrnLimitUI()">
+                <label for="med-prn-limit-toggle" class="text-sm font-bold">تحديد حد أقصى للجرعة اليومية الآمنة</label>
+              </div>
+              <div id="prn-limit-value-wrapper" class="hidden mt-2">
+                <label for="med-prn-max-dose">الحد الأقصى للجرعات اليومية</label>
+                <input type="number" id="med-prn-max-dose" min="1" placeholder="مثال: 4 جرعات كحد أقصى" class="form-control-lg">
+                <p class="text-xs text-danger mt-1">سيرسل التطبيق تحذيراً صريحاً إذا حاولت تناول جرعة إضافية تتجاوز هذا الحد اليومي.</p>
+              </div>
+            </div>
+
+            <!-- Tapering Schedule Options -->
+            <div class="card-dark p-3 mt-3">
+              <div class="checkbox-row">
+                <input type="checkbox" id="med-tapering-toggle" onchange="app.toggleTaperingUI()">
+                <label for="med-tapering-toggle" class="text-sm font-bold">تناقص تدريجي للجرعة (Tapering Schedule)</label>
+              </div>
+              <div id="tapering-values-wrapper" class="hidden mt-3">
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="med-tapering-step">نقص الجرعة بمقدار</label>
+                    <input type="text" id="med-tapering-step" placeholder="مثال: 0.5 حبة، 1 مل" class="form-control-lg">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="med-tapering-days">كل عدد أيام</label>
+                    <input type="number" id="med-tapering-days" min="1" placeholder="مثال: 3 أيام" class="form-control-lg">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Time Inputs Grid -->
+            <div class="form-group mt-3" id="time-inputs-container">
+              <label class="font-bold">أوقات تناول الجرعات</label>
+              <div class="time-inputs-grid" id="time-inputs-grid">
+                <div class="time-input-item">
+                  <span>الجرعة 1:</span>
+                  <input type="time" class="med-time-input" required value="08:00">
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline" onclick="app.closeAddModal()">إلغاء</button>
-            <button type="submit" class="btn btn-primary">حفظ الدواء</button>
+          <!-- WIZARD STEP 3: Alerts & Customization -->
+          <div class="wizard-step-panel hidden" id="wizard-step-3">
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="med-snooze">تكرار التنبيه (Snooze)</label>
+                <select id="med-snooze" class="form-control-lg">
+                  <option value="5">كل 5 دقائق (موصى به كبار السن)</option>
+                  <option value="10">كل 10 دقائق</option>
+                  <option value="15">كل 15 دقيقة</option>
+                  <option value="0">بدون تكرار</option>
+                </select>
+              </div>
+              <div class="form-group flex-1">
+                <label for="med-beep-tone">نغمة التنبيه المخصصة</label>
+                <select id="med-beep-tone" class="form-control-lg">
+                  <option value="sine">🔊 رنين قياسي (Sine)</option>
+                  <option value="sawtooth">🚨 رنين قوي وعنيف (Sawtooth)</option>
+                  <option value="triangle">🔔 رنين ناعم (Triangle)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Card Color Accent Picker -->
+            <div class="form-group mt-4">
+              <label>اختر لون بطاقة الدواء المميز</label>
+              <div class="color-picker-grid">
+                <div class="color-option active" style="background-color: var(--teal);" onclick="app.selectCardColor(this, 'teal')"></div>
+                <div class="color-option" style="background-color: var(--emerald);" onclick="app.selectCardColor(this, 'emerald')"></div>
+                <div class="color-option" style="background-color: var(--cyan);" onclick="app.selectCardColor(this, 'cyan')"></div>
+                <div class="color-option" style="background-color: #6366f1;" onclick="app.selectCardColor(this, 'indigo')"></div>
+                <div class="color-option" style="background-color: #ec4899;" onclick="app.selectCardColor(this, 'pink')"></div>
+              </div>
+              <input type="hidden" id="med-color" value="teal">
+            </div>
+          </div>
+
+          <!-- Wizard Footer Controls -->
+          <div class="modal-footer mt-6">
+            <button type="button" class="btn btn-outline" id="btn-wizard-prev" onclick="app.handleWizardPrev()">إلغاء</button>
+            <button type="button" class="btn btn-primary" id="btn-wizard-next" onclick="app.handleWizardNext()">التالي</button>
           </div>
         </form>
       </div>
@@ -402,6 +484,88 @@
         <button class="btn btn-success btn-lg" onclick="app.acknowledgeAlarm('taken')">تم التناول ✅</button>
         <button class="btn btn-outline btn-lg text-white" onclick="app.acknowledgeAlarm('snooze')">تأجيل 5 دقائق ⏳</button>
         <button class="btn btn-outline btn-sm text-danger" onclick="app.acknowledgeAlarm('skip')">تخطي الجرعة ❌</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barcode Scanner Active View Overlay -->
+  <div id="barcode-scanner-active-view" class="barcode-scanner-overlay hidden">
+    <div class="scanner-aimer">
+      <div class="aimer-corner top-left"></div>
+      <div class="aimer-corner top-right"></div>
+      <div class="aimer-corner bottom-left"></div>
+      <div class="aimer-corner bottom-right"></div>
+      <div class="aimer-laser"></div>
+    </div>
+    <p class="scanner-tip">ضع باركود الدواء داخل الإطار للمسح 📷</p>
+    <button type="button" class="btn btn-danger btn-lg scanner-cancel-btn" onclick="app.stopBarcodeScanner()">إلغاء المسح ❌</button>
+  </div>
+
+  <!-- Barcode Lookup Loading Overlay -->
+  <div id="barcode-lookup-overlay" class="modal-overlay hidden" style="z-index: 2000;">
+    <div class="modal-card text-center p-6" style="width: 90%; max-width: 380px;">
+      <div class="spinner mx-auto mb-4"></div>
+      <h4 class="text-lg font-bold mb-2">🔎 جاري الاستعلام عن الدواء...</h4>
+      <p class="text-sm text-muted">نبحث عن الباركود في الإنترنت (المهلة 10 ثوانٍ)</p>
+      <div class="countdown-bar-container mt-4">
+        <div id="lookup-countdown-bar" class="countdown-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barcode Lookup Fallback Dialog -->
+  <div id="barcode-fallback-dialog" class="modal-overlay hidden" style="z-index: 2100;">
+    <div class="modal-card text-center p-6" style="width: 90%; max-width: 360px;">
+      <div class="text-4xl mb-4">⚠️</div>
+      <h4 class="text-lg font-bold mb-2">تعذر الاستعلام تلقائياً</h4>
+      <p class="text-sm text-muted mb-6">انتهت مهلة الـ 10 ثوانٍ أو لم يتم العثور على نتائج للباركود عبر الويب.</p>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <button type="button" class="btn btn-secondary w-full btn-lg" onclick="app.retryBarcodeLookup()">إعادة محاولة البحث 🔄</button>
+        <button type="button" class="btn btn-outline w-full btn-lg" onclick="app.closeBarcodeFallbackAndManual()">إدخال البيانات يدوياً ✍️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Reference Option Dialog (Appears after saving medication) -->
+  <div id="photo-option-dialog" class="modal-overlay hidden" style="z-index: 2200;">
+    <div class="modal-card text-center p-6" style="width: 90%; max-width: 380px;">
+      <div class="text-4xl mb-4">📸</div>
+      <h4 class="text-lg font-bold mb-2">إضافة مرجع بصري للدواء</h4>
+      <p class="text-sm text-muted mb-6">تم حفظ الدواء بنجاح! هل تريد التقاط صورة لعلبة الدواء لتظهر كمرجع بصري مع إمكانية قصها؟</p>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <button type="button" class="btn btn-success w-full btn-lg" onclick="app.captureNativePhotoReference()">التقاط صورة للدواء 📷</button>
+        <button type="button" class="btn btn-outline btn-secondary w-full btn-lg" onclick="app.skipPhotoReference()">تخطي بدون صورة ❌</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN Lock Screen Overlay -->
+  <div id="pin-lock-overlay" class="modal-overlay hidden" style="z-index: 3000;">
+    <div class="pin-container">
+      <div class="pin-header text-center">
+        <span class="lock-icon" style="font-size: 3rem;">🔒</span>
+        <h2 id="pin-screen-title" class="text-xl font-bold mt-2">تأمين رمز PIN</h2>
+        <p id="pin-screen-subtitle" class="text-sm text-muted">الرجاء إدخال الرمز السري المكون من 4 أرقام</p>
+      </div>
+      <div class="pin-indicator-row mt-6">
+        <div class="pin-dot" id="pin-dot-1"></div>
+        <div class="pin-dot" id="pin-dot-2"></div>
+        <div class="pin-dot" id="pin-dot-3"></div>
+        <div class="pin-dot" id="pin-dot-4"></div>
+      </div>
+      <div class="pin-keyboard mt-8">
+        <button type="button" class="pin-key" onclick="app.pressPinKey('1')">1</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('2')">2</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('3')">3</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('4')">4</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('5')">5</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('6')">6</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('7')">7</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('8')">8</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('9')">9</button>
+        <button type="button" class="pin-key text-danger" onclick="app.clearPin()">حذف</button>
+        <button type="button" class="pin-key" onclick="app.pressPinKey('0')">0</button>
+        <button type="button" class="pin-key text-warning" onclick="app.cancelPinSetup()" id="pin-cancel-btn">إلغاء</button>
       </div>
     </div>
   </div>

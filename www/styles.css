@@ -1378,3 +1378,339 @@ input[type="time"]:focus {
   font-family: var(--font-english);
 }
 
+/* ==========================================================================
+   SENIOR ACCESSIBILITY & PREMIUM UI ENHANCEMENTS
+   ========================================================================== */
+
+/* 18px readable typography for main text elements */
+body, p, label, .med-card-info-item, .res-stat-item, .empty-state p, .guide-intro {
+  font-size: 1.05rem; /* Larger, senior-readable base */
+}
+
+.med-title, .med-card-name, #alarm-med-name, .modal-header h3 {
+  font-size: 1.25rem !important;
+  font-weight: 800 !important;
+}
+
+.med-subtitle {
+  font-size: 1rem !important;
+}
+
+/* 64px Touch Targets for Senior Accessibility */
+.btn-lg, .form-control-lg, select.form-control-lg {
+  height: 64px !important;
+  min-height: 64px !important;
+  font-size: 1.15rem !important;
+  border-radius: var(--radius-md);
+}
+
+.btn {
+  min-height: 54px;
+  font-size: 1.05rem;
+  padding: 12px 24px;
+}
+
+.btn-checkbox {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.nav-item {
+  height: 80px;
+}
+
+.nav-item span {
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+/* ==========================================================================
+   3-STEP WIZARD UI
+   ========================================================================== */
+.wizard-indicator-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.wizard-step-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 20px;
+  background-color: var(--bg-tertiary);
+  transition: var(--transition);
+  border: 1px solid transparent;
+}
+
+.wizard-step-badge.active {
+  color: var(--text-main);
+  background-color: rgba(59, 130, 246, 0.2);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.wizard-step-badge.completed {
+  color: #34d399;
+  background-color: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.wizard-step-line {
+  flex: 1;
+  height: 2px;
+  background-color: var(--border-color);
+  margin: 0 8px;
+  transition: var(--transition);
+}
+
+.wizard-step-line.completed {
+  background-color: var(--accent-success);
+}
+
+.wizard-step-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   BARCODE SCANNER VIEWPORT OVERLAY
+   ========================================================================== */
+body.barcode-scanner-active {
+  background: transparent !important;
+}
+
+body.barcode-scanner-active .app-shell {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+body.barcode-scanner-active main,
+body.barcode-scanner-active header,
+body.barcode-scanner-active nav,
+body.barcode-scanner-active #medication-modal {
+  display: none !important;
+}
+
+.barcode-scanner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1500;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.scanner-aimer {
+  width: 280px;
+  height: 180px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+  border-radius: var(--radius-md);
+  margin-bottom: 24px;
+}
+
+.aimer-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: var(--accent-success);
+  border-style: solid;
+  border-width: 0;
+}
+
+.aimer-corner.top-left {
+  top: -2px;
+  left: -2px;
+  border-top-width: 4px;
+  border-left-width: 4px;
+  border-top-left-radius: 8px;
+}
+
+.aimer-corner.top-right {
+  top: -2px;
+  right: -2px;
+  border-top-width: 4px;
+  border-right-width: 4px;
+  border-top-right-radius: 8px;
+}
+
+.aimer-corner.bottom-left {
+  bottom: -2px;
+  left: -2px;
+  border-bottom-width: 4px;
+  border-left-width: 4px;
+  border-bottom-left-radius: 8px;
+}
+
+.aimer-corner.bottom-right {
+  bottom: -2px;
+  right: -2px;
+  border-bottom-width: 4px;
+  border-right-width: 4px;
+  border-bottom-right-radius: 8px;
+}
+
+.aimer-laser {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  background-color: var(--accent-success);
+  box-shadow: 0 0 12px var(--accent-success);
+  animation: laserSweep 2s ease-in-out infinite;
+}
+
+@keyframes laserSweep {
+  0% { top: 10px; }
+  50% { top: 167px; }
+  100% { top: 10px; }
+}
+
+.scanner-tip {
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.scanner-cancel-btn {
+  width: 80%;
+  max-width: 300px;
+}
+
+/* ==========================================================================
+   BARCODE LOOKUP & COUNTDOWN
+   ========================================================================== */
+.countdown-bar-container {
+  width: 100%;
+  height: 6px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.countdown-bar {
+  height: 100%;
+  width: 100%;
+  background-color: var(--accent-success);
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+/* Visual pulse-highlight effect when autofilling fields */
+.pulse-highlight-animation {
+  animation: pulse-glow 2.5s ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    border-color: var(--border-color);
+    box-shadow: none;
+  }
+  20%, 60% {
+    border-color: var(--accent-success);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    background-color: rgba(16, 185, 129, 0.05);
+  }
+}
+
+/* ==========================================================================
+   PIN LOCK SCREEN OVERLAY
+   ========================================================================== */
+.pin-container {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pin-indicator-row {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.pin-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: var(--bg-tertiary);
+  border: 2px solid var(--border-color);
+  transition: var(--transition);
+}
+
+.pin-dot.active {
+  background-color: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 12px var(--accent-primary);
+}
+
+.pin-keyboard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+  justify-items: center;
+}
+
+.pin-key {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-family: var(--font-english), var(--font-arabic);
+  font-size: 1.6rem;
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.pin-key:active {
+  background-color: var(--bg-tertiary);
+  transform: scale(0.92);
+}
+
+.pin-key.text-danger, .pin-key.text-warning {
+  font-size: 1rem;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.shake-error {
+  animation: shake 0.3s ease-in-out 2;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+

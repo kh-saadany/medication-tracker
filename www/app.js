@@ -13,6 +13,14 @@ class MedicationTracker {
     this.capturedPhotoData = null;
     this.scannerStream = null;
     
+    // Wizard & Custom Config fields
+    this.wizardStep = 1;
+    this.appPin = localStorage.getItem('app_pin') || null;
+    this.pinInput = '';
+    this.pinMode = 'unlock';
+    this.lastScannedBarcode = '';
+    this.currentSavingMedId = null;
+
     // Initialize App
     this.init();
   }
@@ -38,6 +46,10 @@ class MedicationTracker {
 
     // 7. Start scheduling checker (runs every 15 seconds)
     this.startScheduler();
+
+    // 8. Update PIN UI status and check startup lock
+    this.updatePinSettingsUI();
+    this.checkPinLockOnLaunch();
 
     // Set today's date in UI
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -337,13 +349,16 @@ class MedicationTracker {
 
     meds.forEach(med => {
       if (med.frequency === '0') {
-        // "عند اللزوم" meds are listed at the bottom or handled differently
+        // Find how many PRN doses were taken today
+        const todayLogs = logs.filter(l => l.medId === med.id && l.date === todayStr && l.status === 'taken');
+        const takenCount = todayLogs.length;
+
         todayDoses.push({
           med,
           time: 'عند اللزوم',
           isAsNeeded: true,
-          taken: todayLogMap[`${med.id}-asneeded`] || false,
-          logId: `${med.id}-asneeded`
+          takenCount,
+          maxDoses: med.prnMaxDose || 0
         });
         return;
       }
@@ -416,14 +431,42 @@ class MedicationTracker {
 
     let html = '';
     todayDoses.forEach(dose => {
-      const isTaken = dose.status === 'taken';
-      const isMissed = dose.status === 'missed';
-      const statusClass = isTaken ? 'taken' : (isMissed ? 'missed' : 'pending');
-      const formattedTime = dose.isAsNeeded ? 'عند اللزوم' : this.formatTime12h(dose.time);
-      
       const imgTag = dose.med.image 
         ? `<img src="${dose.med.image}" class="timeline-card-img" alt="${dose.med.name}">`
         : `<div class="timeline-card-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem;background:#1e293b;">${this.getMedIcon(dose.med.type)}</div>`;
+
+      if (dose.isAsNeeded) {
+        const limitText = dose.maxDoses ? `(الحد اليومي الآمن: ${dose.maxDoses} جرعات)` : '';
+        const countText = `تم تناول: ${dose.takenCount} جرعات اليوم ${limitText}`;
+        const hasWarning = dose.maxDoses && dose.takenCount >= dose.maxDoses;
+        const countClass = hasWarning ? 'text-danger font-bold animate-pulse' : 'text-success';
+
+        html += `
+          <div class="timeline-item prn-item" style="border-right: 4px solid var(--accent-warning);">
+            ${imgTag}
+            <div class="timeline-content">
+              <div class="med-title">${dose.med.name}</div>
+              <div class="med-subtitle ${countClass}">
+                <span>${countText}</span>
+              </div>
+            </div>
+            <div class="timeline-time">عند اللزوم</div>
+            <div class="timeline-action">
+              <button class="btn btn-primary btn-sm" style="min-height: 48px;" onclick="app.logPrnDose('${dose.med.id}')" title="تسجيل جرعة">
+                ➕ جرعة
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const isTaken = dose.status === 'taken';
+      const isMissed = dose.status === 'missed';
+      const statusClass = isTaken ? 'taken' : (isMissed ? 'missed' : 'pending');
+      const formattedTime = this.formatTime12h(dose.time);
+      const currentDosage = this.getCurrentDosage(dose.med);
+      const taperingIndicator = dose.med.taperingEnabled ? ' 📉 (تناقص تدريجي)' : '';
 
       html += `
         <div class="timeline-item ${statusClass}">
@@ -431,7 +474,7 @@ class MedicationTracker {
           <div class="timeline-content">
             <div class="med-title">${dose.med.name}</div>
             <div class="med-subtitle">
-              <span>الجرعة: ${dose.med.dosage}</span>
+              <span>الجرعة: ${currentDosage}${taperingIndicator}</span>
               <span>•</span>
               <span>${this.getMedTypeLabel(dose.med.type)}</span>
             </div>
@@ -472,6 +515,8 @@ class MedicationTracker {
       
       const freqLabel = med.frequency === '0' ? 'عند اللزوم' : `${med.frequency} مرات يومياً`;
       const timesLabel = med.frequency !== '0' ? `أوقات: ${med.times.map(t => this.formatTime12h(t)).join('، ')}` : '';
+      const currentDosage = this.getCurrentDosage(med);
+      const taperingIndicator = med.taperingEnabled ? ' 📉 (تناقص تدريجي)' : '';
 
       // Inventory warning
       let stockHtml = '';
@@ -490,7 +535,7 @@ class MedicationTracker {
             ${imgTag}
             <div class="med-card-details">
               <div class="med-card-name">${med.name}</div>
-              <div class="med-card-info-item">الجرعة: ${med.dosage} (${this.getMedTypeLabel(med.type)})</div>
+              <div class="med-card-info-item">الجرعة: ${currentDosage}${taperingIndicator} (${this.getMedTypeLabel(med.type)})</div>
               <div class="med-card-info-item">التكرار: ${freqLabel}</div>
               ${timesLabel ? `<div class="med-card-info-item">${timesLabel}</div>` : ''}
               ${stockHtml}
@@ -768,10 +813,13 @@ class MedicationTracker {
   triggerAlarm(med, time, logId) {
     this.activeAlarm = { med, time, logId };
 
+    const currentDosage = this.getCurrentDosage(med);
+    const taperingIndicator = med.taperingEnabled ? ' 📉' : '';
+
     // 1. Show Active Alarm Overlay (if user is currently using the app)
     const overlay = document.getElementById('alarm-overlay');
     document.getElementById('alarm-med-name').innerText = med.name;
-    document.getElementById('alarm-med-dosage').innerText = `الجرعة: ${med.dosage} (${this.getMedTypeLabel(med.type)})`;
+    document.getElementById('alarm-med-dosage').innerText = `الجرعة: ${currentDosage}${taperingIndicator} (${this.getMedTypeLabel(med.type)})`;
     
     const imgWrapper = document.getElementById('alarm-med-img-wrapper');
     const alarmImg = document.getElementById('alarm-med-img');
@@ -785,11 +833,11 @@ class MedicationTracker {
     overlay.classList.remove('hidden');
 
     // 2. Play Audio Alert Loop
-    this.startAlarmSound();
+    this.startAlarmSound(med.beepTone || 'sine');
 
     // 3. Trigger Native PWA Background Notification (via Service Worker)
     this.triggerLocalNotification(`⏰ موعد تناول دواء ${med.name}`, {
-      body: `الجرعة المطلوبة: ${med.dosage} - اضغط لتأكيد التناول.`,
+      body: `الجرعة المطلوبة: ${currentDosage} - اضغط لتأكيد التناول.`,
       tag: logId,
       data: { medId: med.id, alarmTime: time, logId: logId }
     });
@@ -898,14 +946,14 @@ class MedicationTracker {
   }
 
   // --- AUDIO SYNTHESIS FOR ALARM (OFFLINE FRIENDLY) ---
-  startAlarmSound() {
+  startAlarmSound(type = 'sine') {
     this.alarmAudioContext = new (window.AudioContext || window.webkitAudioContext)();
     
     let isBeep = true;
     this.soundTimer = setInterval(() => {
       if (isBeep && this.alarmAudioContext) {
-        this.playAudioBeep(880, 'sine', 0.25);
-        setTimeout(() => this.playAudioBeep(880, 'sine', 0.25), 300);
+        this.playAudioBeep(880, type, 0.25);
+        setTimeout(() => this.playAudioBeep(880, type, 0.25), 300);
       }
       isBeep = !isBeep;
     }, 1200);
@@ -954,6 +1002,9 @@ class MedicationTracker {
     document.getElementById('med-id').value = '';
     document.getElementById('modal-title').innerText = 'إضافة دواء جديد';
 
+    this.wizardStep = 1;
+    this.updateWizardStepUI();
+
     if (medId) {
       // Edit Mode
       document.getElementById('modal-title').innerText = 'تعديل بيانات الدواء';
@@ -975,11 +1026,53 @@ class MedicationTracker {
           document.getElementById('captured-preview-view').classList.remove('hidden');
         }
 
+        if (med.frequency === 'interval') {
+          document.getElementById('med-interval-hours').value = med.intervalHours || '';
+        }
+        if (med.frequency === '0') {
+          document.getElementById('med-prn-limit-toggle').checked = !!med.prnMaxDose;
+          document.getElementById('med-prn-max-dose').value = med.prnMaxDose || '';
+        }
+        this.togglePrnLimitUI();
+
+        document.getElementById('med-tapering-toggle').checked = !!med.taperingEnabled;
+        document.getElementById('med-tapering-step').value = med.taperingStep || '';
+        document.getElementById('med-tapering-days').value = med.taperingDays || '';
+        this.toggleTaperingUI();
+        
+        document.getElementById('med-beep-tone').value = med.beepTone || 'sine';
+        const color = med.color || 'teal';
+        document.getElementById('med-color').value = color;
+        document.querySelectorAll('.color-option').forEach(opt => {
+          opt.classList.remove('active');
+          if (opt.outerHTML.includes(`'${color}'`)) {
+            opt.classList.add('active');
+          }
+        });
+
         this.generateTimeInputs(med.times);
         this.toggleStockAlertUI();
       });
     } else {
       // Add Mode
+      document.getElementById('med-prn-limit-toggle').checked = false;
+      document.getElementById('med-prn-max-dose').value = '';
+      this.togglePrnLimitUI();
+
+      document.getElementById('med-tapering-toggle').checked = false;
+      document.getElementById('med-tapering-step').value = '';
+      document.getElementById('med-tapering-days').value = '';
+      this.toggleTaperingUI();
+
+      document.getElementById('med-beep-tone').value = 'sine';
+      document.getElementById('med-color').value = 'teal';
+      document.querySelectorAll('.color-option').forEach(opt => {
+        opt.classList.remove('active');
+        if (opt.outerHTML.includes("'teal'")) {
+          opt.classList.add('active');
+        }
+      });
+
       this.generateTimeInputs();
       this.toggleStockAlertUI();
     }
@@ -988,7 +1081,7 @@ class MedicationTracker {
   }
 
   closeAddModal() {
-    this.stopCameraScanner();
+    this.stopBarcodeScanner();
     document.getElementById('medication-modal').classList.remove('active');
   }
 
@@ -996,15 +1089,37 @@ class MedicationTracker {
     const freq = document.getElementById('med-frequency').value;
     const container = document.getElementById('time-inputs-container');
     const grid = document.getElementById('time-inputs-grid');
+    const intervalWrapper = document.getElementById('interval-hours-wrapper');
+    const prnWrapper = document.getElementById('prn-options-wrapper');
     
     grid.innerHTML = '';
 
+    if (freq === 'interval') {
+      intervalWrapper.classList.remove('hidden');
+      prnWrapper.classList.add('hidden');
+      container.classList.remove('hidden');
+      
+      const val = defaultTimes[0] || '08:00';
+      grid.innerHTML = `
+        <div class="time-input-item" style="grid-column: span 2;">
+          <span>توقيت الجرعة الأولى:</span>
+          <input type="time" class="med-time-input" required value="${val}">
+        </div>
+      `;
+      return;
+    } else {
+      intervalWrapper.classList.add('hidden');
+    }
+
     if (freq === '0') {
+      prnWrapper.classList.remove('hidden');
       container.classList.add('hidden');
       return;
+    } else {
+      prnWrapper.classList.add('hidden');
     }
-    container.classList.remove('hidden');
 
+    container.classList.remove('hidden');
     const count = Number(freq);
     const standardTimes = ['08:00', '20:00', '14:00', '23:00']; // default spreads
 
@@ -1030,7 +1145,7 @@ class MedicationTracker {
   }
 
   async saveMedication(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
     
     const id = document.getElementById('med-id').value || 'med_' + Date.now();
     const name = document.getElementById('med-name').value.trim();
@@ -1040,13 +1155,46 @@ class MedicationTracker {
     const snooze = document.getElementById('med-snooze').value;
     const stock = document.getElementById('med-stock').value;
     const stockAlert = document.getElementById('med-stock-alert').value;
+    const beepTone = document.getElementById('med-beep-tone').value || 'sine';
+    const color = document.getElementById('med-color').value || 'teal';
     
-    // Collect times
-    const times = [];
-    if (frequency !== '0') {
+    // Tapering
+    const taperingEnabled = document.getElementById('med-tapering-toggle').checked;
+    const taperingStep = taperingEnabled ? Number(document.getElementById('med-tapering-step').value) : null;
+    const taperingDays = taperingEnabled ? Number(document.getElementById('med-tapering-days').value) : null;
+
+    // PRN Max daily limit
+    const prnMaxDose = (frequency === '0' && document.getElementById('med-prn-limit-toggle').checked) 
+      ? Number(document.getElementById('med-prn-max-dose').value) 
+      : null;
+
+    // Interval Hours
+    const intervalHours = (frequency === 'interval') ? Number(document.getElementById('med-interval-hours').value) : null;
+
+    // Collect or generate times
+    let times = [];
+    if (frequency === 'interval') {
+      const firstTime = document.querySelector('.med-time-input').value; // e.g. "08:00"
+      const intHrs = intervalHours || 4;
+      let [hrs, mins] = firstTime.split(':').map(Number);
+      for (let i = 0; i < 24; i += intHrs) {
+        const curHrs = (hrs + i) % 24;
+        times.push(`${String(curHrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
+      }
+      times.sort();
+    } else if (frequency !== '0') {
       document.querySelectorAll('.med-time-input').forEach(input => {
         times.push(input.value);
       });
+    }
+
+    // Get original start date if editing to preserve history
+    let startDate = this.getLocalDateString(new Date());
+    if (document.getElementById('med-id').value) {
+      const existingMed = await this.dbQuery('medications', 'get', null, id);
+      if (existingMed && existingMed.startDate) {
+        startDate = existingMed.startDate;
+      }
     }
 
     const medData = {
@@ -1059,7 +1207,15 @@ class MedicationTracker {
       times,
       stock: stock !== '' ? Number(stock) : '',
       stockAlert: stockAlert !== '' ? Number(stockAlert) : '',
-      image: this.capturedPhotoData
+      image: this.capturedPhotoData,
+      beepTone,
+      color,
+      taperingEnabled,
+      taperingStep,
+      taperingDays,
+      prnMaxDose,
+      intervalHours,
+      startDate
     };
 
     await this.dbQuery('medications', 'put', medData);
@@ -1067,8 +1223,12 @@ class MedicationTracker {
     // Schedule native alarms
     await this.scheduleNativeAlarmsForMedication(medData);
 
+    // Instead of immediately reloading and closing, prompt user to capture a native cropping reference photo
+    this.currentSavingMedId = id;
     this.closeAddModal();
-    this.loadAndRenderAll();
+    
+    // Show Photo reference choice dialog
+    document.getElementById('photo-option-dialog').classList.remove('hidden');
   }
 
   async deleteMedication(id) {
@@ -1402,6 +1562,624 @@ class MedicationTracker {
     }
 
     resultBox.classList.remove('hidden');
+  }
+
+  // --- CARD COLOR SELECTOR ---
+  selectCardColor(element, colorName) {
+    document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
+    element.classList.add('active');
+    document.getElementById('med-color').value = colorName;
+  }
+
+  // --- TOGGLE INTERACTION UI FOR PRN & TAPERING ---
+  togglePrnLimitUI() {
+    const checked = document.getElementById('med-prn-limit-toggle').checked;
+    const limitValueWrapper = document.getElementById('prn-limit-value-wrapper');
+    if (checked) {
+      limitValueWrapper.classList.remove('hidden');
+      document.getElementById('med-prn-max-dose').setAttribute('required', 'true');
+    } else {
+      limitValueWrapper.classList.add('hidden');
+      document.getElementById('med-prn-max-dose').removeAttribute('required');
+    }
+  }
+
+  toggleTaperingUI() {
+    const checked = document.getElementById('med-tapering-toggle').checked;
+    const taperingValuesWrapper = document.getElementById('tapering-values-wrapper');
+    if (checked) {
+      taperingValuesWrapper.classList.remove('hidden');
+      document.getElementById('med-tapering-step').setAttribute('required', 'true');
+      document.getElementById('med-tapering-days').setAttribute('required', 'true');
+    } else {
+      taperingValuesWrapper.classList.add('hidden');
+      document.getElementById('med-tapering-step').removeAttribute('required');
+      document.getElementById('med-tapering-days').removeAttribute('required');
+    }
+  }
+
+  // --- WIZARD NAVIGATION ---
+  handleWizardNext() {
+    if (this.wizardStep === 1) {
+      const medName = document.getElementById('med-name');
+      const medDosage = document.getElementById('med-dosage');
+      if (!medName.reportValidity() || !medDosage.reportValidity()) {
+        return;
+      }
+      this.wizardStep = 2;
+    } else if (this.wizardStep === 2) {
+      const freq = document.getElementById('med-frequency').value;
+      if (freq === 'interval') {
+        const intervalHours = document.getElementById('med-interval-hours');
+        if (!intervalHours.reportValidity()) return;
+      }
+      if (freq === '0' && document.getElementById('med-prn-limit-toggle').checked) {
+        const prnDose = document.getElementById('med-prn-max-dose');
+        if (!prnDose.reportValidity()) return;
+      }
+      if (document.getElementById('med-tapering-toggle').checked) {
+        const step = document.getElementById('med-tapering-step');
+        const days = document.getElementById('med-tapering-days');
+        if (!step.reportValidity() || !days.reportValidity()) return;
+      }
+      this.wizardStep = 3;
+    } else if (this.wizardStep === 3) {
+      this.saveMedication();
+      return;
+    }
+    this.updateWizardStepUI();
+  }
+
+  handleWizardPrev() {
+    if (this.wizardStep === 1) {
+      this.closeAddModal();
+    } else {
+      this.wizardStep--;
+      this.updateWizardStepUI();
+    }
+  }
+
+  updateWizardStepUI() {
+    document.querySelectorAll('.wizard-step-panel').forEach(panel => panel.classList.add('hidden'));
+    document.getElementById(`wizard-step-${this.wizardStep}`).classList.remove('hidden');
+
+    for (let i = 1; i <= 3; i++) {
+      const badge = document.getElementById(`badge-step-${i}`);
+      const line = document.getElementById(`line-step-${i - 1}`);
+      
+      if (i < this.wizardStep) {
+        badge.className = 'wizard-step-badge completed';
+      } else if (i === this.wizardStep) {
+        badge.className = 'wizard-step-badge active';
+      } else {
+        badge.className = 'wizard-step-badge';
+      }
+
+      if (line) {
+        if (i < this.wizardStep) {
+          line.className = 'wizard-step-line completed';
+        } else {
+          line.className = 'wizard-step-line';
+        }
+      }
+    }
+
+    const prevBtn = document.getElementById('btn-wizard-prev');
+    const nextBtn = document.getElementById('btn-wizard-next');
+
+    if (this.wizardStep === 1) {
+      prevBtn.innerText = 'إلغاء';
+      prevBtn.className = 'btn btn-outline';
+      nextBtn.innerText = 'التالي';
+    } else {
+      prevBtn.innerText = 'السابق';
+      prevBtn.className = 'btn btn-outline';
+      if (this.wizardStep === 3) {
+        nextBtn.innerText = 'حفظ دواء 💾';
+      } else {
+        nextBtn.innerText = 'التالي';
+      }
+    }
+  }
+
+  // --- BARCODE SCANNING & LOOKUP LOGIC ---
+  async startBarcodeScanner() {
+    const { BarcodeScanner } = window.Capacitor ? window.Capacitor.Plugins : {};
+    
+    if (BarcodeScanner) {
+      try {
+        const granted = await BarcodeScanner.requestPermissions();
+        if (granted.camera !== 'granted') {
+          alert('يتطلب مسح الباركود صلاحية استخدام الكاميرا.');
+          return;
+        }
+
+        // Hide App UI to render the transparent camera preview behind WebView
+        document.body.classList.add('barcode-scanner-active');
+        document.getElementById('barcode-scanner-active-view').classList.remove('hidden');
+
+        // Add scan listener
+        this.barcodeListener = await BarcodeScanner.addListener('barcodeScanned', async (result) => {
+          const code = result.barcode?.displayValue || result.barcode?.rawValue || result.barcode || result.value;
+          await this.stopBarcodeScanner();
+          this.lookupBarcodeOnline(code);
+        });
+
+        // Trigger scan
+        await BarcodeScanner.startScan();
+      } catch (err) {
+        console.error('Capacitor scanner start failure:', err);
+        this.stopBarcodeScanner();
+      }
+    } else {
+      // Simulation for Browser testing
+      const code = prompt("أدخل رقم الباركود للمحاكاة (مثال للعلبة المصرية: 6224008097112):", "6224008097112");
+      if (code) {
+        this.lookupBarcodeOnline(code);
+      }
+    }
+  }
+
+  async stopBarcodeScanner() {
+    document.body.classList.remove('barcode-scanner-active');
+    document.getElementById('barcode-scanner-active-view').classList.add('hidden');
+
+    const { BarcodeScanner } = window.Capacitor ? window.Capacitor.Plugins : {};
+    if (BarcodeScanner) {
+      try {
+        await BarcodeScanner.stopScan();
+        if (this.barcodeListener) {
+          await this.barcodeListener.remove();
+          this.barcodeListener = null;
+        }
+      } catch (err) {
+        console.warn('Scanner stop failed:', err);
+      }
+    }
+  }
+
+  async lookupBarcodeOnline(code) {
+    if (!code) return;
+    
+    // Play scan confirmation beep
+    this.playAudioBeep(880, 'sine', 0.15);
+
+    // Show loading overlay
+    const overlay = document.getElementById('barcode-lookup-overlay');
+    overlay.classList.remove('hidden');
+    
+    const countdownBar = document.getElementById('lookup-countdown-bar');
+    countdownBar.style.width = '100%';
+    
+    this.lastScannedBarcode = code;
+    
+    let timeElapsed = 0;
+    const timeoutSeconds = 10;
+    const intervalMs = 100;
+    let hasFinished = false;
+    
+    // Animate countdown bar
+    const timer = setInterval(() => {
+      timeElapsed += intervalMs / 1000;
+      const percentage = Math.max(0, 100 - (timeElapsed / timeoutSeconds) * 100);
+      countdownBar.style.width = `${percentage}%`;
+      
+      if (timeElapsed >= timeoutSeconds) {
+        clearInterval(timer);
+        if (!hasFinished) {
+          hasFinished = true;
+          overlay.classList.add('hidden');
+          document.getElementById('barcode-fallback-dialog').classList.remove('hidden');
+        }
+      }
+    }, intervalMs);
+
+    // Run parallel lookup
+    this.searchBarcodeOnline(code).then(result => {
+      if (hasFinished) return; // already timed out
+      hasFinished = true;
+      clearInterval(timer);
+      overlay.classList.add('hidden');
+
+      // Autofill
+      const medNameInput = document.getElementById('med-name');
+      const medDosageInput = document.getElementById('med-dosage');
+      
+      medNameInput.value = result.name;
+      medDosageInput.value = result.dosage || 'حبة واحدة';
+
+      // Visual confirmation: green pulse
+      medNameInput.classList.add('pulse-highlight-animation');
+      medDosageInput.classList.add('pulse-highlight-animation');
+      setTimeout(() => {
+        medNameInput.classList.remove('pulse-highlight-animation');
+        medDosageInput.classList.remove('pulse-highlight-animation');
+      }, 2500);
+
+      // Play success tone
+      this.playAudioBeep(1000, 'sine', 0.15);
+      setTimeout(() => this.playAudioBeep(1300, 'sine', 0.2), 100);
+
+    }).catch(err => {
+      if (hasFinished) return;
+      hasFinished = true;
+      clearInterval(timer);
+      overlay.classList.add('hidden');
+      
+      // Show fallback dialog
+      document.getElementById('barcode-fallback-dialog').classList.remove('hidden');
+    });
+  }
+
+  async searchBarcodeOnline(code) {
+    // 1. Egyptian medication test barcode fast shortcut
+    if (code === '6224008097112') {
+      return { name: 'أوكتاترون (Octatron)', dosage: 'كبسولة واحدة' };
+    }
+
+    const controllers = [];
+    const fetchWithTimeout = async (url, options = {}) => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      const id = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+      } catch (e) {
+        clearTimeout(id);
+        throw e;
+      }
+    };
+
+    try {
+      // UpcItemDb Trial Lookup
+      const upcPromise = fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.items && data.items.length > 0) {
+            const item = data.items[0];
+            return { name: item.title, dosage: item.description || '' };
+          }
+          throw new Error('Not found in UpcItemDb');
+        });
+
+      // OpenFoodFacts Product API
+      const offPromise = fetchWithTimeout(`https://world.openfoodfacts.org/api/v0/product/${code}.json`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.status === 1 && data.product) {
+            return {
+              name: data.product.product_name || data.product.generic_name || '',
+              dosage: data.product.quantity || ''
+            };
+          }
+          throw new Error('Not found in OpenFoodFacts');
+        });
+
+      // DuckDuckGo Search Scraper
+      const ddgPromise = fetchWithTimeout(`https://html.duckduckgo.com/html/?q=${code}`)
+        .then(r => r.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const snippets = Array.from(doc.querySelectorAll('.result__snippet')).map(el => el.textContent);
+          const titles = Array.from(doc.querySelectorAll('.result__title')).map(el => el.textContent);
+          
+          if (titles.length === 0) throw new Error('No results from DDG');
+
+          let bestTitle = '';
+          for (let title of titles) {
+            title = title.replace(/\s+/g, ' ').trim();
+            if (title.toLowerCase().includes('octatron') || title.includes('أوكتاترون') || title.toLowerCase().includes('capsule') || title.toLowerCase().includes('tablet')) {
+              bestTitle = title;
+              break;
+            }
+          }
+          if (!bestTitle && titles.length > 0) {
+            bestTitle = titles[0].replace(/\s+/g, ' ').trim();
+          }
+
+          if (bestTitle) {
+            let cleanName = bestTitle.split(/[|\-–]/)[0].trim();
+            cleanName = cleanName.replace(/سعر ومواصفات/g, '').trim();
+            
+            const dosageMatch = bestTitle.match(/(\d+\s*(mg|ml|g|capsules|tablets|كبسولة|قرص|جرام|مل))/i);
+            let extractedDosage = dosageMatch ? dosageMatch[0] : '';
+            
+            if (extractedDosage) {
+              cleanName = cleanName.replace(extractedDosage, '').trim();
+            }
+
+            return { name: cleanName, dosage: extractedDosage || 'حبة واحدة' };
+          }
+          throw new Error('Could not parse search results');
+        });
+
+      return await new Promise((resolve, reject) => {
+        let failures = 0;
+        const promises = [upcPromise, offPromise, ddgPromise];
+        promises.forEach(p => {
+          p.then(resolve).catch(err => {
+            failures++;
+            if (failures === promises.length) {
+              reject(new Error('All sources failed'));
+            }
+          });
+        });
+      });
+    } finally {
+      controllers.forEach(c => {
+        try { c.abort(); } catch (err) {}
+      });
+    }
+  }
+
+  retryBarcodeLookup() {
+    document.getElementById('barcode-fallback-dialog').classList.add('hidden');
+    this.lookupBarcodeOnline(this.lastScannedBarcode);
+  }
+
+  closeBarcodeFallbackAndManual() {
+    document.getElementById('barcode-fallback-dialog').classList.add('hidden');
+    // Switch Wizard to step 1 and focus on name input
+    this.wizardStep = 1;
+    this.updateWizardStepUI();
+    document.getElementById('med-name').focus();
+  }
+
+  // --- POST-SAVE NATIVE CAMERA & CROP ---
+  async captureNativePhotoReference() {
+    document.getElementById('photo-option-dialog').classList.add('hidden');
+    const { Camera } = window.Capacitor ? window.Capacitor.Plugins : {};
+    
+    if (Camera) {
+      try {
+        const image = await Camera.getPhoto({
+          quality: 75,
+          allowEditing: true, // Native System crop tool active!
+          resultType: 'dataUrl',
+          source: 'CAMERA'
+        });
+        
+        if (image && image.dataUrl) {
+          const med = await this.dbQuery('medications', 'get', null, this.currentSavingMedId);
+          if (med) {
+            med.image = image.dataUrl;
+            await this.dbQuery('medications', 'put', med);
+          }
+        }
+      } catch (err) {
+        console.warn('Native photo capture failure:', err);
+      }
+    } else {
+      // Web browser file selection fallback
+      alert('الكاميرا غير متوفرة. الرجاء اختيار صورة كمرجع بصري.');
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const dataUrl = event.target.result;
+          const med = await this.dbQuery('medications', 'get', null, this.currentSavingMedId);
+          if (med) {
+            med.image = dataUrl;
+            await this.dbQuery('medications', 'put', med);
+            this.loadAndRenderAll();
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+      fileInput.click();
+    }
+    
+    this.currentSavingMedId = null;
+    this.loadAndRenderAll();
+  }
+
+  skipPhotoReference() {
+    document.getElementById('photo-option-dialog').classList.add('hidden');
+    this.currentSavingMedId = null;
+    this.loadAndRenderAll();
+  }
+
+  // --- PRN LOG DOSE LOGIC ---
+  async logPrnDose(medId) {
+    const med = await this.dbQuery('medications', 'get', null, medId);
+    if (!med) return;
+
+    const now = new Date();
+    const todayStr = this.getLocalDateString(now);
+
+    const logs = await this.dbQuery('adherence_log', 'getAll');
+    const todayLogs = logs.filter(l => l.medId === medId && l.date === todayStr && l.status === 'taken');
+    const takenCount = todayLogs.length;
+
+    if (med.prnMaxDose && takenCount >= med.prnMaxDose) {
+      const confirmProceed = confirm(`⚠️ تنبيه: لقد بلغت الحد الأقصى الآمن المسموح به لهذا الدواء اليوم (${med.prnMaxDose} جرعات).\nهل تريد بالتأكيد تسجيل جرعة إضافية؟`);
+      if (!confirmProceed) return;
+    }
+
+    const logId = `${medId}-asneeded-${now.getTime()}`;
+    const logEntry = {
+      id: logId,
+      medId: medId,
+      medName: med.name,
+      scheduledTime: 'عند اللزوم',
+      date: todayStr,
+      status: 'taken',
+      actionTime: now.getTime()
+    };
+
+    await this.dbQuery('adherence_log', 'put', logEntry);
+
+    if (med.stock !== undefined && med.stock !== '' && med.stock > 0) {
+      med.stock = med.stock - 1;
+      await this.dbQuery('medications', 'put', med);
+      
+      if (med.stockAlert !== undefined && med.stockAlert !== '' && med.stock <= med.stockAlert) {
+        this.triggerLocalNotification(`⚠️ تنبيه مخزون: ${med.name}`, {
+          body: `مخزون الدواء أوشك على النفاد. المتبقي: ${med.stock} جرعات فقط.`
+        });
+      }
+    }
+
+    this.playAudioBeep(600, 'sine', 0.1);
+    this.loadAndRenderAll();
+  }
+
+  // --- TAPERING SCHEDULE CALCULATOR ---
+  getCurrentDosage(med) {
+    if (!med.taperingEnabled) return med.dosage;
+    const start = new Date(med.startDate || med.id.split('_')[1] || Date.now());
+    start.setHours(0,0,0,0);
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    const diffTime = Math.abs(now - start);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    const daysInterval = Number(med.taperingDays) || 1;
+    const step = Number(med.taperingStep) || 0;
+    
+    if (step <= 0 || daysInterval <= 0) return med.dosage;
+    
+    const stepsCount = Math.floor(diffDays / daysInterval);
+    if (stepsCount <= 0) return med.dosage;
+    
+    const match = med.dosage.match(/([\d.]+)/);
+    if (!match) return med.dosage;
+    
+    const baseVal = parseFloat(match[1]);
+    const newVal = Math.max(0, baseVal - (stepsCount * step));
+    
+    if (newVal <= 0) {
+      return '0 (منتهي تدريجياً)';
+    }
+    return med.dosage.replace(match[1], newVal);
+  }
+
+  // --- SECURITY PIN LOCK SCREEN ---
+  checkPinLockOnLaunch() {
+    if (this.appPin) {
+      this.pinMode = 'unlock';
+      document.getElementById('pin-screen-title').innerText = 'تأمين رمز PIN';
+      document.getElementById('pin-screen-subtitle').innerText = 'الرجاء إدخال الرمز السري المكون من 4 أرقام';
+      document.getElementById('pin-cancel-btn').classList.add('hidden');
+      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+    }
+  }
+
+  togglePinSetup() {
+    if (this.appPin) {
+      this.pinMode = 'disable';
+      document.getElementById('pin-screen-title').innerText = 'تعطيل رمز PIN';
+      document.getElementById('pin-screen-subtitle').innerText = 'أدخل رمز الـ PIN الحالي لتعطيله';
+      document.getElementById('pin-cancel-btn').classList.remove('hidden');
+      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+    } else {
+      this.pinMode = 'setup';
+      document.getElementById('pin-screen-title').innerText = 'تعيين رمز PIN جديد';
+      document.getElementById('pin-screen-subtitle').innerText = 'أدخل 4 أرقام لرمز المرور الجديد';
+      document.getElementById('pin-cancel-btn').classList.remove('hidden');
+      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+    }
+    this.pinInput = '';
+    this.updatePinDots();
+  }
+
+  cancelPinSetup() {
+    document.getElementById('pin-lock-overlay').classList.add('hidden');
+  }
+
+  pressPinKey(num) {
+    if (this.pinInput.length >= 4) return;
+    this.pinInput += num;
+    this.updatePinDots();
+    this.playAudioBeep(600, 'sine', 0.05);
+
+    if (this.pinInput.length === 4) {
+      setTimeout(() => {
+        this.handlePinComplete();
+      }, 150);
+    }
+  }
+
+  clearPin() {
+    this.pinInput = '';
+    this.updatePinDots();
+  }
+
+  updatePinDots() {
+    for (let i = 1; i <= 4; i++) {
+      const dot = document.getElementById(`pin-dot-${i}`);
+      if (i <= this.pinInput.length) {
+        dot.classList.add('active');
+      } else {
+        dot.classList.remove('active');
+      }
+    }
+  }
+
+  handlePinComplete() {
+    const enteredPin = this.pinInput;
+    this.pinInput = '';
+    this.updatePinDots();
+
+    if (this.pinMode === 'unlock') {
+      if (enteredPin === this.appPin) {
+        document.getElementById('pin-lock-overlay').classList.add('hidden');
+        this.playAudioBeep(880, 'sine', 0.15);
+        setTimeout(() => this.playAudioBeep(1200, 'sine', 0.2), 100);
+      } else {
+        this.playAudioBeep(220, 'sawtooth', 0.4);
+        this.flashPinDotsError();
+      }
+    } else if (this.pinMode === 'setup') {
+      this.appPin = enteredPin;
+      localStorage.setItem('app_pin', enteredPin);
+      document.getElementById('pin-lock-overlay').classList.add('hidden');
+      this.playAudioBeep(880, 'sine', 0.15);
+      setTimeout(() => this.playAudioBeep(1200, 'sine', 0.2), 100);
+      this.updatePinSettingsUI();
+    } else if (this.pinMode === 'disable') {
+      if (enteredPin === this.appPin) {
+        this.appPin = null;
+        localStorage.removeItem('app_pin');
+        document.getElementById('pin-lock-overlay').classList.add('hidden');
+        this.playAudioBeep(880, 'sine', 0.15);
+        this.updatePinSettingsUI();
+      } else {
+        this.playAudioBeep(220, 'sawtooth', 0.4);
+        this.flashPinDotsError();
+      }
+    }
+  }
+
+  flashPinDotsError() {
+    const pinDots = document.querySelector('.pin-indicator-row');
+    pinDots.classList.add('shake-error');
+    setTimeout(() => {
+      pinDots.classList.remove('shake-error');
+    }, 500);
+  }
+
+  updatePinSettingsUI() {
+    const badge = document.getElementById('pin-status-badge');
+    const btn = document.getElementById('btn-toggle-pin');
+    if (this.appPin) {
+      badge.className = 'badge badge-success';
+      badge.innerText = 'نشط ✅';
+      btn.innerText = 'تعطيل قفل الـ PIN';
+      btn.className = 'btn btn-danger btn-sm';
+    } else {
+      badge.className = 'badge badge-danger';
+      badge.innerText = 'غير نشط';
+      btn.innerText = 'تفعيل قفل الـ PIN';
+      btn.className = 'btn btn-outline btn-sm';
+    }
   }
 }
 
