@@ -1041,14 +1041,6 @@ class MedicationTracker {
         this.toggleTaperingUI();
         
         document.getElementById('med-beep-tone').value = med.beepTone || 'sine';
-        const color = med.color || 'teal';
-        document.getElementById('med-color').value = color;
-        document.querySelectorAll('.color-option').forEach(opt => {
-          opt.classList.remove('active');
-          if (opt.outerHTML.includes(`'${color}'`)) {
-            opt.classList.add('active');
-          }
-        });
 
         this.generateTimeInputs(med.times);
         this.toggleStockAlertUI();
@@ -1065,13 +1057,6 @@ class MedicationTracker {
       this.toggleTaperingUI();
 
       document.getElementById('med-beep-tone').value = 'sine';
-      document.getElementById('med-color').value = 'teal';
-      document.querySelectorAll('.color-option').forEach(opt => {
-        opt.classList.remove('active');
-        if (opt.outerHTML.includes("'teal'")) {
-          opt.classList.add('active');
-        }
-      });
 
       this.generateTimeInputs();
       this.toggleStockAlertUI();
@@ -1156,7 +1141,6 @@ class MedicationTracker {
     const stock = document.getElementById('med-stock').value;
     const stockAlert = document.getElementById('med-stock-alert').value;
     const beepTone = document.getElementById('med-beep-tone').value || 'sine';
-    const color = document.getElementById('med-color').value || 'teal';
     
     // Tapering
     const taperingEnabled = document.getElementById('med-tapering-toggle').checked;
@@ -1209,7 +1193,6 @@ class MedicationTracker {
       stockAlert: stockAlert !== '' ? Number(stockAlert) : '',
       image: this.capturedPhotoData,
       beepTone,
-      color,
       taperingEnabled,
       taperingStep,
       taperingDays,
@@ -1226,9 +1209,12 @@ class MedicationTracker {
     // Instead of immediately reloading and closing, prompt user to capture a native cropping reference photo
     this.currentSavingMedId = id;
     this.closeAddModal();
+    this.loadAndRenderAll(); // Immediate UI update!
     
     // Show Photo reference choice dialog
-    document.getElementById('photo-option-dialog').classList.remove('hidden');
+    const photoDialog = document.getElementById('photo-option-dialog');
+    photoDialog.classList.remove('hidden');
+    photoDialog.classList.add('active');
   }
 
   async deleteMedication(id) {
@@ -1564,12 +1550,6 @@ class MedicationTracker {
     resultBox.classList.remove('hidden');
   }
 
-  // --- CARD COLOR SELECTOR ---
-  selectCardColor(element, colorName) {
-    document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
-    element.classList.add('active');
-    document.getElementById('med-color').value = colorName;
-  }
 
   // --- TOGGLE INTERACTION UI FOR PRN & TAPERING ---
   togglePrnLimitUI() {
@@ -1747,6 +1727,7 @@ class MedicationTracker {
     // Show loading overlay
     const overlay = document.getElementById('barcode-lookup-overlay');
     overlay.classList.remove('hidden');
+    overlay.classList.add('active');
     
     const countdownBar = document.getElementById('lookup-countdown-bar');
     countdownBar.style.width = '100%';
@@ -1769,7 +1750,10 @@ class MedicationTracker {
         if (!hasFinished) {
           hasFinished = true;
           overlay.classList.add('hidden');
-          document.getElementById('barcode-fallback-dialog').classList.remove('hidden');
+          overlay.classList.remove('active');
+          const fallback = document.getElementById('barcode-fallback-dialog');
+          fallback.classList.remove('hidden');
+          fallback.classList.add('active');
         }
       }
     }, intervalMs);
@@ -1780,6 +1764,7 @@ class MedicationTracker {
       hasFinished = true;
       clearInterval(timer);
       overlay.classList.add('hidden');
+      overlay.classList.remove('active');
 
       // Autofill
       const medNameInput = document.getElementById('med-name');
@@ -1805,9 +1790,12 @@ class MedicationTracker {
       hasFinished = true;
       clearInterval(timer);
       overlay.classList.add('hidden');
+      overlay.classList.remove('active');
       
       // Show fallback dialog
-      document.getElementById('barcode-fallback-dialog').classList.remove('hidden');
+      const fallback = document.getElementById('barcode-fallback-dialog');
+      fallback.classList.remove('hidden');
+      fallback.classList.add('active');
     });
   }
 
@@ -1868,30 +1856,48 @@ class MedicationTracker {
           
           if (titles.length === 0) throw new Error('No results from DDG');
 
-          let bestTitle = '';
-          for (let title of titles) {
-            title = title.replace(/\s+/g, ' ').trim();
-            if (title.toLowerCase().includes('octatron') || title.includes('أوكتاترون') || title.toLowerCase().includes('capsule') || title.toLowerCase().includes('tablet')) {
-              bestTitle = title;
+          // Gather all search text blocks (titles and snippets)
+          const searchTexts = [...titles, ...snippets].map(t => t.replace(/\s+/g, ' ').trim());
+
+          let bestText = '';
+          // Look for any text containing common drug keywords
+          for (let text of searchTexts) {
+            const lowerText = text.toLowerCase();
+            if (lowerText.includes('capsule') || lowerText.includes('tablet') || lowerText.includes('mg') || lowerText.includes('كبسول') || lowerText.includes('قرص') || lowerText.includes('دواء')) {
+              bestText = text;
               break;
             }
           }
-          if (!bestTitle && titles.length > 0) {
-            bestTitle = titles[0].replace(/\s+/g, ' ').trim();
+          if (!bestText && searchTexts.length > 0) {
+            bestText = searchTexts[0];
           }
 
-          if (bestTitle) {
-            let cleanName = bestTitle.split(/[|\-–]/)[0].trim();
-            cleanName = cleanName.replace(/سعر ومواصفات/g, '').trim();
+          if (bestText) {
+            // Clean name: extract the first part of the text
+            let cleanName = bestText.split(/[|\-–]/)[0].trim();
+            // Clean common Arabic web search prefixes and noise
+            cleanName = cleanName.replace(/سعر ومواصفات/g, '')
+                                 .replace(/دواعي الاستعمال/g, '')
+                                 .replace(/سعر دواء/g, '')
+                                 .replace(/سعر/g, '')
+                                 .replace(/صيدلية/g, '')
+                                 .trim();
             
-            const dosageMatch = bestTitle.match(/(\d+\s*(mg|ml|g|capsules|tablets|كبسولة|قرص|جرام|مل))/i);
+            // Comprehensive regex for dosage/spec extraction (supporting Eastern and Western numerals)
+            const dosageMatch = bestText.match(/(\d+|[٠-٩]+)\s*(mg|ml|g|mcg|capsules|tablets|كبسولة|كبسول|قرص|أقراص|جرام|مل|مجم|ميكروجرام|وحدة)/i);
             let extractedDosage = dosageMatch ? dosageMatch[0] : '';
             
             if (extractedDosage) {
               cleanName = cleanName.replace(extractedDosage, '').trim();
             }
 
-            return { name: cleanName, dosage: extractedDosage || 'حبة واحدة' };
+            // Capitalize English words, clean extra spaces
+            cleanName = cleanName.replace(/\s+/g, ' ').trim();
+
+            return { 
+              name: cleanName || 'دواء غير معروف', 
+              dosage: extractedDosage || 'حبة واحدة' 
+            };
           }
           throw new Error('Could not parse search results');
         });
@@ -1916,12 +1922,16 @@ class MedicationTracker {
   }
 
   retryBarcodeLookup() {
-    document.getElementById('barcode-fallback-dialog').classList.add('hidden');
+    const fallback = document.getElementById('barcode-fallback-dialog');
+    fallback.classList.add('hidden');
+    fallback.classList.remove('active');
     this.lookupBarcodeOnline(this.lastScannedBarcode);
   }
 
   closeBarcodeFallbackAndManual() {
-    document.getElementById('barcode-fallback-dialog').classList.add('hidden');
+    const fallback = document.getElementById('barcode-fallback-dialog');
+    fallback.classList.add('hidden');
+    fallback.classList.remove('active');
     // Switch Wizard to step 1 and focus on name input
     this.wizardStep = 1;
     this.updateWizardStepUI();
@@ -1930,7 +1940,10 @@ class MedicationTracker {
 
   // --- POST-SAVE NATIVE CAMERA & CROP ---
   async captureNativePhotoReference() {
-    document.getElementById('photo-option-dialog').classList.add('hidden');
+    const photoDialog = document.getElementById('photo-option-dialog');
+    photoDialog.classList.add('hidden');
+    photoDialog.classList.remove('active');
+    
     const { Camera } = window.Capacitor ? window.Capacitor.Plugins : {};
     
     if (Camera) {
@@ -1981,7 +1994,9 @@ class MedicationTracker {
   }
 
   skipPhotoReference() {
-    document.getElementById('photo-option-dialog').classList.add('hidden');
+    const photoDialog = document.getElementById('photo-option-dialog');
+    photoDialog.classList.add('hidden');
+    photoDialog.classList.remove('active');
     this.currentSavingMedId = null;
     this.loadAndRenderAll();
   }
@@ -2068,30 +2083,37 @@ class MedicationTracker {
       document.getElementById('pin-screen-title').innerText = 'تأمين رمز PIN';
       document.getElementById('pin-screen-subtitle').innerText = 'الرجاء إدخال الرمز السري المكون من 4 أرقام';
       document.getElementById('pin-cancel-btn').classList.add('hidden');
-      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+      const pinOverlay = document.getElementById('pin-lock-overlay');
+      pinOverlay.classList.remove('hidden');
+      pinOverlay.classList.add('active');
     }
   }
 
   togglePinSetup() {
+    const pinOverlay = document.getElementById('pin-lock-overlay');
     if (this.appPin) {
       this.pinMode = 'disable';
       document.getElementById('pin-screen-title').innerText = 'تعطيل رمز PIN';
       document.getElementById('pin-screen-subtitle').innerText = 'أدخل رمز الـ PIN الحالي لتعطيله';
       document.getElementById('pin-cancel-btn').classList.remove('hidden');
-      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+      pinOverlay.classList.remove('hidden');
+      pinOverlay.classList.add('active');
     } else {
       this.pinMode = 'setup';
       document.getElementById('pin-screen-title').innerText = 'تعيين رمز PIN جديد';
       document.getElementById('pin-screen-subtitle').innerText = 'أدخل 4 أرقام لرمز المرور الجديد';
       document.getElementById('pin-cancel-btn').classList.remove('hidden');
-      document.getElementById('pin-lock-overlay').classList.remove('hidden');
+      pinOverlay.classList.remove('hidden');
+      pinOverlay.classList.add('active');
     }
     this.pinInput = '';
     this.updatePinDots();
   }
 
   cancelPinSetup() {
-    document.getElementById('pin-lock-overlay').classList.add('hidden');
+    const pinOverlay = document.getElementById('pin-lock-overlay');
+    pinOverlay.classList.add('hidden');
+    pinOverlay.classList.remove('active');
   }
 
   pressPinKey(num) {
@@ -2128,9 +2150,12 @@ class MedicationTracker {
     this.pinInput = '';
     this.updatePinDots();
 
+    const pinOverlay = document.getElementById('pin-lock-overlay');
+
     if (this.pinMode === 'unlock') {
       if (enteredPin === this.appPin) {
-        document.getElementById('pin-lock-overlay').classList.add('hidden');
+        pinOverlay.classList.add('hidden');
+        pinOverlay.classList.remove('active');
         this.playAudioBeep(880, 'sine', 0.15);
         setTimeout(() => this.playAudioBeep(1200, 'sine', 0.2), 100);
       } else {
@@ -2140,7 +2165,8 @@ class MedicationTracker {
     } else if (this.pinMode === 'setup') {
       this.appPin = enteredPin;
       localStorage.setItem('app_pin', enteredPin);
-      document.getElementById('pin-lock-overlay').classList.add('hidden');
+      pinOverlay.classList.add('hidden');
+      pinOverlay.classList.remove('active');
       this.playAudioBeep(880, 'sine', 0.15);
       setTimeout(() => this.playAudioBeep(1200, 'sine', 0.2), 100);
       this.updatePinSettingsUI();
@@ -2148,7 +2174,8 @@ class MedicationTracker {
       if (enteredPin === this.appPin) {
         this.appPin = null;
         localStorage.removeItem('app_pin');
-        document.getElementById('pin-lock-overlay').classList.add('hidden');
+        pinOverlay.classList.add('hidden');
+        pinOverlay.classList.remove('active');
         this.playAudioBeep(880, 'sine', 0.15);
         this.updatePinSettingsUI();
       } else {
